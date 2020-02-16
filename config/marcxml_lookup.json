@@ -1,0 +1,26 @@
+{
+    "Title": {
+        "datafield": "245", 
+        "subfield": "a"
+    },
+    "Author": {
+        "datafield": "100",
+        "subfield": "a"
+    },
+    "Imprint": {
+        "datafield": "260",
+        "subfield": "b"
+    },
+    "Publication Date": {
+        "datafield": "260", 
+        "subfield": "c"
+    },
+    "ISBN": {
+        "datafield": "20",
+        "subfield": "a"
+    },
+    "Series": {
+        "datafield": "490", 
+        "subfield": "a"
+    }
+}

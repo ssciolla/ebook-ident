@@ -1,0 +1,12 @@
+{
+    "LOG_LEVEL": "DEBUG",
+    "WORLDCAT": {
+        "WC_SEARCH_API_KEY": "",
+        "BIB_RESOURCE_BASE_URL": "https://www.worldcat.org/webservices/catalog/search/sru?"
+    },
+    "DB_CACHE_PATH": [
+        "data", 
+        "db_cache.db"
+    ],
+    "TITLES_CSV_PATH": []
+}
