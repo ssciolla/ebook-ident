@@ -8,5 +8,5 @@
         "data", 
         "db_cache.db"
     ],
-    "TITLES_CSV_PATH": []
+    "BOOKS_CSV_PATH": []
 }
