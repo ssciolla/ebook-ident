@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 # local libraries
-from compare import create_compare_func, normalize, normalize_univ
+from compare import create_compare_func, look_for_ebook, normalize, normalize_univ
 from create_db_cache import ENGINE, DB_CACHE_PATH_ELEMS, set_up_database
 
 
@@ -78,6 +78,7 @@ def make_request_using_cache(url: str, params: dict) -> str:
 
     logger.debug('Making a request for new data...')
     response_obj = requests.get(url, params)
+    logger.debug(response_obj.url)
     status_code = response_obj.status_code
     if status_code == 403:
         logger.warning('Reached API limit')
@@ -104,10 +105,11 @@ def look_up_book_in_worldcat(book_series: pd.Series) -> pd.DataFrame:
 
     # Generate query string
     full_title = create_full_title(book_series)
+    query_author = normalize(f'{book_series["Author_First"]} {book_series["Author_Last"]}')
     logger.debug('full_title: ' + full_title)
     query_title = normalize(full_title)
     logger.debug('query_title: ' + query_title)
-    query_str = f'srw.ti all "{query_title}"'
+    query_str = f'srw.ti all "{query_title}" and srw.au all "{query_author}"'
 
     params = {
         'wskey': WC_API_KEY,
@@ -159,14 +161,21 @@ def run_checks_and_return_isbns(orig_record: pd.Series, results_df: pd.DataFrame
     # Run comparisons
     checked_results_df['title_matched'] = checked_results_df['Title'].map(compare_to_title)
     checked_results_df['imprint_matched'] = checked_results_df['Imrpint'].map(compare_to_imprint)
+    checked_results_df['ebook_present'] = checked_results_df['Physical_Description'].map(look_for_ebook)
 
     # Gather ISBNs
-    matches_df = checked_results_df[checked_results_df['title_matched'] and checked_results_df['imprint_matched']]
+    # This is probably not right; need to check
+    matches_df = checked_results_df[(
+        checked_results_df['title_matched'] and 
+        checked_results_df['imprint_matched'] and
+        checked_results_df['ebook_present']
+    )]
+    logger.info(matches_df.head())
     unique_isbns = matches_df['ISBN'].drop_duplicates().dropna()
     return unique_isbns
 
 
-def identify_books() -> None:
+def identify_ebooks() -> None:
     # Load input data
     press_books_df = pd.read_csv(os.path.join(*BOOKS_CSV_PATH_ELEMS))
     logger.info(press_books_df)
@@ -235,4 +244,4 @@ def identify_books() -> None:
 # Main Program
 
 if __name__ == '__main__':
-    identify_books()
+    identify_ebooks()

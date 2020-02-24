@@ -1,22 +1,26 @@
 {
-    "Title": {
-        "datafield": "245", 
+    "ISBN": {
+        "datafield": "20",
         "subfield": "a"
     },
     "Author": {
         "datafield": "100",
         "subfield": "a"
     },
+    "Title": {
+        "datafield": "245", 
+        "subfield": "a"
+    },
     "Imprint": {
         "datafield": "260",
         "subfield": "b"
     },
-    "Publication Date": {
+    "Publication_Date": {
         "datafield": "260", 
         "subfield": "c"
     },
-    "ISBN": {
-        "datafield": "20",
+    "Physical_Description": {
+        "datafield": "300",
         "subfield": "a"
     },
     "Series": {

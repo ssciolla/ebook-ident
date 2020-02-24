@@ -16,10 +16,17 @@ logger = logging.getLogger(__name__)
 UNIV_PATTERN = re.compile(r'Univ\.')
 WS_PATTERN = re.compile(r'\s+')
 PUNC_PATTERN = re.compile(r'[,\.#:]')
+EBOOK_PATTERN = re.compile(r'e-?book')
 AMP_PATTERN = re.compile(r'&')
 
 
 # Functions
+
+def tokenize(input: str) -> Sequence[str]:
+    tokens = WS_PATTERN.split(input)
+    logger.debug(tokens)
+    return tokens
+
 
 def normalize(input: str) -> str:
     normalized_str = AMP_PATTERN.sub('and', PUNC_PATTERN.sub('', input)).lower()
@@ -31,10 +38,12 @@ def normalize_univ(input: str) -> str:
     return UNIV_PATTERN.sub('University', input)
 
 
-def tokenize(input: str) -> Sequence[str]:
-    tokens = WS_PATTERN.split(input)
-    logger.debug(tokens)
-    return tokens
+def look_for_ebook(input: str) -> bool:
+    norm_input = normalize(input)
+    result = EBOOK_PATTERN.search(norm_input)
+    if result:
+        return True
+    return False
 
 
 def create_compare_func(left: str, thresh: float, transforms: Sequence[Callable] = []) -> Callable:
