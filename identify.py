@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 # local libraries
-from compare import create_compare_func, normalize
+from compare import create_compare_func, normalize, normalize_univ
 from create_db_cache import ENGINE, DB_CACHE_PATH_ELEMS, set_up_database
 
 
@@ -29,7 +29,7 @@ except FileNotFoundError:
 
 logger.setLevel(ENV.get('LOG_LEVEL', 'DEBUG'))
 
-# Database
+# Set up database if necessary
 if not os.path.isfile(os.path.join(*DB_CACHE_PATH_ELEMS)):
     set_up_database()
 
@@ -99,7 +99,6 @@ def make_request_using_cache(url: str, params: dict) -> str:
 
 # Functions - Processing
 
-
 # Use the Bibliographic Resource tool to search for records and parse the returned MARC XML
 def look_up_book_in_worldcat(book_series: pd.Series) -> pd.DataFrame:
 
@@ -153,8 +152,9 @@ def run_checks_and_return_isbns(orig_record: pd.Series, results_df: pd.DataFrame
 
     # Create comparison functions
     full_title = create_full_title(orig_record)
-    compare_to_title = create_compare_func(full_title)
-    compare_to_imprint = create_compare_func(orig_record['Imprint'])
+    compare_to_title = create_compare_func(full_title, 85)
+    imprint_transforms = [normalize_univ]
+    compare_to_imprint = create_compare_func(orig_record['Imprint'], 85, imprint_transforms)
 
     # Run comparisons
     checked_results_df['title_matched'] = checked_results_df['Title'].map(compare_to_title)
@@ -172,8 +172,7 @@ def identify_books() -> None:
     logger.info(press_books_df)
 
     # For each record, fetch WorldCat data, compare to record, and document results
-    new_press_book_series_list = []
-
+    new_book_series_list = []
     multiple_isbn_matches = []
     no_isbn_matches = []
     num_successful_matches = 0
@@ -208,10 +207,10 @@ def identify_books() -> None:
                     new_book_series['ISBN'] = isbns[0]
                     logger.info(f'Book successfully matched with ISBN: {isbns[0]}')
                     num_successful_matches += 1
-        new_press_book_series_list.append(new_book_series)
+        new_book_series_list.append(new_book_series)
 
     # Generate CSV output
-    identified_books_df = pd.concat(new_press_book_series_list)
+    identified_books_df = pd.concat(new_book_series_list)
     identified_books_df.to_csv(os.path.join('data', 'identified_books.csv'))
 
     multiple_isbn_matches_df = pd.concat(multiple_isbn_matches)
@@ -232,7 +231,8 @@ def identify_books() -> None:
     logger.info(f'\n\n{report_str}')
     return None
 
+
 # Main Program
 
 if __name__ == '__main__':
-    identify_ebooks()
+    identify_books()
