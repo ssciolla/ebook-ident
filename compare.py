@@ -10,7 +10,6 @@ from fuzzywuzzy import fuzz
 
 # Initializing settings and global variables
 
-logging.basicConfig(level="DEBUG")
 logger = logging.getLogger(__name__)
 
 UNIV_PATTERN = re.compile(r'Univ\.')
