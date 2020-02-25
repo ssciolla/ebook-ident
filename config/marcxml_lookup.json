@@ -11,6 +11,10 @@
         "datafield": "245", 
         "subfield": "a"
     },
+    "Subtitle": {
+        "datafield": "245",
+        "subfield": "b"
+    },
     "Imprint": {
         "datafield": "260",
         "subfield": "b"

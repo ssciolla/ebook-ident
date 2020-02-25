@@ -3,13 +3,13 @@
 # standard libraries
 import json, logging, os, re
 from datetime import datetime
-from typing import Sequence
+from typing import Dict, Sequence
 
 # third-party libraries
-import requests
-import bs4 as BeautifulSoup
 import numpy as np
 import pandas as pd
+import requests
+from bs4 import BeautifulSoup
 
 # local libraries
 from compare import create_compare_func, look_for_ebook, normalize, normalize_univ
@@ -45,7 +45,7 @@ with open(os.path.join('config', 'marcxml_lookup.json')) as lookup_file:
 
 # Functions - Utilities
 
-def create_full_title(record: pd.Series):
+def create_full_title(record: Dict[str, str]):
     full_title = record['Title']
     if record["Subtitle"] not in ["N/A", ""]:
         full_title += ' ' + record['Subtitle']
@@ -66,7 +66,7 @@ def create_unique_request_str(base_url: str, params_dict: dict, private_keys: li
 
 
 # Make the request and cache new data, or retrieves the cached data
-def make_request_using_cache(url: str, params: dict) -> str:
+def make_request_using_cache(url: str, params: Dict[str, str]) -> str:
     unique_req_url = create_unique_request_str(url, params)
     cache_df = pd.read_sql(f'''
         SELECT * FROM request WHERE request_url = '{unique_req_url}';
@@ -94,18 +94,18 @@ def make_request_using_cache(url: str, params: dict) -> str:
         'response': [response_text]
     })
     logger.debug(new_request_df)
-    new_request_df.to_sql('request', ENGINE)
+    new_request_df.to_sql('request', ENGINE, if_exists='append', index=False)
     return response_text
 
 
 # Functions - Processing
 
 # Use the Bibliographic Resource tool to search for records and parse the returned MARC XML
-def look_up_book_in_worldcat(book_series: pd.Series) -> pd.DataFrame:
+def look_up_book_in_worldcat(book_dict: Dict[str, str]) -> pd.DataFrame:
 
     # Generate query string
-    full_title = create_full_title(book_series)
-    query_author = normalize(f'{book_series["Author_First"]} {book_series["Author_Last"]}')
+    full_title = create_full_title(book_dict)
+    query_author = normalize(f'{book_dict["Author_First"]} {book_dict["Author_Last"]}')
     logger.debug('full_title: ' + full_title)
     query_title = normalize(full_title)
     logger.debug('query_title: ' + query_title)
@@ -123,14 +123,13 @@ def look_up_book_in_worldcat(book_series: pd.Series) -> pd.DataFrame:
         return pd.DataFrame()
     
     result_xml = BeautifulSoup(result, 'xml')
-    logger.debug(result_xml)
     number_of_records = result_xml.find("numberOfRecords").text
     logger.debug(number_of_records)
 
     records = result_xml.find_all("recordData")
-    record_series_list = []
+    record_dict_list = []
     for record in records:
-        record_series = pd.Series()
+        record_dict = {}
         for key in MARCXML_LOOKUP:
             marc_field = MARCXML_LOOKUP[key]
             statement = record.find('datafield', tag=marc_field['datafield'])
@@ -138,18 +137,22 @@ def look_up_book_in_worldcat(book_series: pd.Series) -> pd.DataFrame:
                 value = pd.NA
             else:
                 sub_statement = statement.find("subfield", code=marc_field['subfield'])
-                if not sub_statement:
+                # Turn NA into regex?
+                if not sub_statement or 'NA' in sub_statement:
                     value = pd.NA
                 else:
                     value = sub_statement.text
-            record_series[key] = value
-        record_series_list.append(record_series)
-    records_df = pd.concat(record_series_list)
+            record_dict[key] = value
+        record_dict_list.append(record_dict)
+    records_df = pd.DataFrame(record_dict_list)
+    logger.debug(records_df.head())
     return records_df
 
 
-def run_checks_and_return_isbns(orig_record: pd.Series, results_df: pd.DataFrame) -> pd.Series:
+def run_checks_and_return_isbns(orig_record: Dict[str, str], results_df: pd.DataFrame) -> Sequence[str]:
+    logger.debug(orig_record)
     checked_results_df = results_df.copy()
+    logger.info(checked_results_df)
     logger.info(f'Number of WorldCat results: {len(checked_results_df)}')
 
     # Create comparison functions
@@ -158,20 +161,20 @@ def run_checks_and_return_isbns(orig_record: pd.Series, results_df: pd.DataFrame
     imprint_transforms = [normalize_univ]
     compare_to_imprint = create_compare_func(orig_record['Imprint'], 85, imprint_transforms)
 
+    # Create full title column
+    checked_results_df['Full_Title'] = checked_results_df['Title'] + checked_results_df['Subtitle']
+    logger.debug(checked_results_df['Full_Title'])
+
     # Run comparisons
-    checked_results_df['title_matched'] = checked_results_df['Title'].map(compare_to_title)
-    checked_results_df['imprint_matched'] = checked_results_df['Imrpint'].map(compare_to_imprint)
-    checked_results_df['ebook_present'] = checked_results_df['Physical_Description'].map(look_for_ebook)
+    checked_results_df['Title_Matched'] = checked_results_df['Full_Title'].map(compare_to_title, na_action='ignore')
+    checked_results_df['Imprint_Matched'] = checked_results_df['Imprint'].map(compare_to_imprint, na_action='ignore')
+    # checked_results_df['Ebook_Present'] = checked_results_df['Physical_Description'].map(look_for_ebook, na_action='ignore')
 
     # Gather ISBNs
-    # This is probably not right; need to check
-    matches_df = checked_results_df[(
-        checked_results_df['title_matched'] and 
-        checked_results_df['imprint_matched'] and
-        checked_results_df['ebook_present']
-    )]
+    matches_df = checked_results_df.loc[(checked_results_df['Title_Matched']) & (checked_results_df['Imprint_Matched'])]
+    # checked_results_df['Ebook_Present']
     logger.info(matches_df.head())
-    unique_isbns = matches_df['ISBN'].drop_duplicates().dropna()
+    unique_isbns = matches_df['ISBN'].drop_duplicates().dropna().to_list()
     return unique_isbns
 
 
@@ -181,60 +184,65 @@ def identify_ebooks() -> None:
     logger.info(press_books_df)
 
     # For each record, fetch WorldCat data, compare to record, and document results
-    new_book_series_list = []
+    new_book_dicts = []
     multiple_isbn_matches = []
     no_isbn_matches = []
     num_successful_matches = 0
 
     for press_book_row_tup in press_books_df.iterrows():
-        new_book_series = press_book_row_tup[1].copy()
-        full_book_title = create_full_title(new_book_series)
+        new_book_dict = press_book_row_tup[1].copy().to_dict()
+        logger.info(new_book_dict)
+        full_book_title = create_full_title(new_book_dict)
         logger.info(f'Looking for {full_book_title} in WorldCat...')
-        if not new_book_series['ISBN']:
-            logger.info(f'{create_full_title(new_book_series)} already has an ISBN: {new_book_series["ISBN"]}')
+        if not new_book_dict['ISBN']:
+            logger.info(f'{create_full_title(new_book_dict)} already has an ISBN: {new_book_dict["ISBN"]}')
+            new_book_dicts.append(new_book_dict)
         else:
-            wc_records_df = look_up_book_in_worldcat(new_book_series)
+            wc_records_df = look_up_book_in_worldcat(new_book_dict)
             logger.info(wc_records_df.head())
-            isbns = run_checks_and_return_isbns(new_book_series, wc_records_df)
+            isbns = run_checks_and_return_isbns(new_book_dict, wc_records_df)
             if not isbns:
                 logger.warning(f'No ISBNS were found!')
-                no_matches_dict = pd.Series({
+                no_matches_dict = {
                     'index': press_book_row_tup[0],
                     'full_title': full_book_title
-                })
+                }
                 no_isbn_matches.append(no_matches_dict)
             else:
                 if len(isbns) > 1:
                     logger.warning('Multiple ISBNs found!')
-                    multiple_match_series = pd.Series({
+                    multiple_match_dict = {
                         'index': press_book_row_tup[0],
                         'full_title': full_book_title,
                         'matching_isbns': isbns
-                    })
-                    multiple_isbn_matches.append(multiple_match_series)
+                    }
+                    multiple_isbn_matches.append(multiple_match_dict)
                 else:
-                    new_book_series['ISBN'] = isbns[0]
+                    new_book_dict['ISBN'] = isbns[0]
                     logger.info(f'Book successfully matched with ISBN: {isbns[0]}')
                     num_successful_matches += 1
-        new_book_series_list.append(new_book_series)
+                    new_book_dicts.append(new_book_dict)
 
     # Generate CSV output
-    identified_books_df = pd.concat(new_book_series_list)
-    identified_books_df.to_csv(os.path.join('data', 'identified_books.csv'))
+    if new_book_dicts:
+        identified_books_df = pd.DataFrame(new_book_dicts)
+        identified_books_df.to_csv(os.path.join('data', 'identified_books.csv'), index=False)
 
-    multiple_isbn_matches_df = pd.concat(multiple_isbn_matches)
-    multiple_isbn_matches_df.to_csv(os.path.join('data', 'multiple_isbn_matches.csv'))
+    if multiple_isbn_matches:
+        multiple_isbn_matches_df = pd.DataFrame(multiple_isbn_matches)
+        multiple_isbn_matches_df.to_csv(os.path.join('data', 'multiple_isbn_matches.csv'), index=False)
 
-    no_isbn_matches_df = pd.concat(no_isbn_matches)
-    no_isbn_matches_df.to_csv(os.path.join('data', 'no_isbn_matches.csv'))
+    if no_isbn_matches:
+        no_isbn_matches_df = pd.DataFrame(no_isbn_matches)
+        no_isbn_matches_df.to_csv(os.path.join('data', 'no_isbn_matches.csv'), index=False)
 
     # Log Summary Report
     report_str = '** Sumary Report from identify.py **\n\n'
     report_str += f'-- Total number of records: {len(press_books_df)} --\n'
     report_str += f'-- Books successfully updated with ISBNs: {num_successful_matches}\n'
-    report_str += f'-- Books with multiple ISBN matches: {len(multiple_isbn_matches_df)}\n'
-    report_str += f'-- Books with no matching ISBNs: {len(no_isbn_matches_df)}\n'
-    if len(multiple_isbn_matches_df) or len(no_isbn_matches_df): 
+    report_str += f'-- Books with multiple ISBN matches: {len(multiple_isbn_matches)}\n'
+    report_str += f'-- Books with no matching ISBNs: {len(no_isbn_matches)}\n'
+    if len(multiple_isbn_matches) or len(no_isbn_matches): 
         report_str += f'?? Review the match problem CSVs in the data directory.\n'
         report_str += f'?? Resolve match problems by manually adding an accurate ISBN to {"/".join(BOOKS_CSV_PATH_ELEMS)}.'
     logger.info(f'\n\n{report_str}')

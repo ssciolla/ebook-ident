@@ -62,7 +62,7 @@ def create_compare_func(left: str, thresh: float, transforms: Sequence[Callable]
         full_lev_ratio = fuzz.ratio(norm_left, norm_right)
         logger.debug(full_lev_ratio)
         if full_lev_ratio >= thresh:
-            logger.debug(f'The full Levenstein distance ratio of {full_lev_ratio} met the {thresh} threshold.')
+            logger.info(f'The full Levenstein distance ratio of {full_lev_ratio} met the {thresh} threshold.')
             return True
 
         right_tokens = tokenize(right)
@@ -72,10 +72,10 @@ def create_compare_func(left: str, thresh: float, transforms: Sequence[Callable]
             partial_lev_ratio = fuzz.partial_ratio(norm_left, norm_right)
             logger.debug(partial_lev_ratio)
             if partial_lev_ratio >= thresh:
-                logger.debug(f'The partial Levenstein distance ratio of {full_lev_ratio} met the {thresh} threshold.')
+                logger.info(f'The partial Levenstein distance ratio of {full_lev_ratio} met the {thresh} threshold.')
                 return True
         
-        logger.debug(f'No Levenstein distance ratios met the {thresh} threshold.')
+        logger.info(f'No Levenstein distance ratios met the {thresh} threshold.')
         return False
 
     return compare_func
