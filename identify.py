@@ -151,9 +151,9 @@ def look_up_book_in_worldcat(book_dict: Dict[str, str]) -> pd.DataFrame:
 
 def run_checks_and_return_isbns(orig_record: Dict[str, str], results_df: pd.DataFrame) -> Sequence[str]:
     logger.debug(orig_record)
-    checked_results_df = results_df.copy()
-    logger.info(checked_results_df)
-    logger.info(f'Number of WorldCat results: {len(checked_results_df)}')
+    checked_df = results_df.copy()
+    logger.info(checked_df)
+    logger.info(f'Number of WorldCat results: {len(checked_df)}')
 
     # Create comparison functions
     full_title = create_full_title(orig_record)
@@ -162,17 +162,19 @@ def run_checks_and_return_isbns(orig_record: Dict[str, str], results_df: pd.Data
     compare_to_imprint = create_compare_func(orig_record['Imprint'], 85, imprint_transforms)
 
     # Create full title column
-    checked_results_df['Full_Title'] = checked_results_df['Title'] + checked_results_df['Subtitle']
-    logger.debug(checked_results_df['Full_Title'])
+    checked_df['Full_Title'] = checked_df['Title'] + checked_df['Subtitle']
+    logger.debug(checked_df['Full_Title'])
 
     # Run comparisons
-    checked_results_df['Title_Matched'] = checked_results_df['Full_Title'].map(compare_to_title, na_action='ignore')
-    checked_results_df['Imprint_Matched'] = checked_results_df['Imprint'].map(compare_to_imprint, na_action='ignore')
-    # checked_results_df['Ebook_Present'] = checked_results_df['Physical_Description'].map(look_for_ebook, na_action='ignore')
+    checked_df['Title_Matched'] = checked_df['Full_Title'].map(compare_to_title, na_action='ignore')
+    checked_df['Imprint_Matched'] = checked_df['Imprint'].map(compare_to_imprint, na_action='ignore')
+    checked_df['Ebook_Present'] = checked_df['Physical_Description'].map(look_for_ebook, na_action='ignore')
+    logger.info(checked_df[['Title', 'Imprint', 'Title_Matched', 'Imprint_Matched', 'Ebook_Present']])
 
     # Gather ISBNs
-    matches_df = checked_results_df.loc[(checked_results_df['Title_Matched']) & (checked_results_df['Imprint_Matched'])]
-    # checked_results_df['Ebook_Present']
+    matches_df = checked_df.loc[(
+        (checked_df['Title_Matched']) & (checked_df['Imprint_Matched'])
+    )]
     logger.info(matches_df.head())
     unique_isbns = matches_df['ISBN'].drop_duplicates().dropna().to_list()
     return unique_isbns
