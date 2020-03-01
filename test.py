@@ -13,15 +13,14 @@ class TestComparison(unittest.TestCase):
         # See https://www.worldcat.org/search?qt=worldcat_org_all&q=hound+of+the+baskervilles
         left = "The hound of the Baskervilles"
         right = "HOUND OF THE BASKERVILLES."
-        compare_to_title = compare.create_compare_func(left, 85)
+        compare_to_title = compare.create_compare_func([left], 85)
         result = compare_to_title(right)
         self.assertTrue(result)
-
 
     def test_imprint_comparison(self):
         left = "University of MI Press"
         right = "Univ. of Michigan Press"
-        compare_to_imprint = compare.create_compare_func(left, 85, [compare.normalize_univ])
+        compare_to_imprint = compare.create_compare_func([left], 85, [compare.normalize_univ])
         result = compare_to_imprint(right)
         self.assertTrue(result)
 
