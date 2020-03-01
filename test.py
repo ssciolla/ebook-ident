@@ -21,8 +21,8 @@ class TestComparison(unittest.TestCase):
     def test_imprint_comparison(self):
         left = "University of MI Press"
         right = "Univ. of Michigan Press"
-        compare_to_title = compare.create_compare_func(left, 85, [compare.normalize_univ])
-        result = compare_to_title(right)
+        compare_to_imprint = compare.create_compare_func(left, 85, [compare.normalize_univ])
+        result = compare_to_imprint(right)
         self.assertTrue(result)
 
 
