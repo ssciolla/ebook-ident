@@ -8,5 +8,9 @@
         "data", 
         "db_cache.db"
     ],
-    "BOOKS_CSV_PATH": []
+    "BOOKS_CSV_PATH": [],
+    "TEST_MODE": {
+        "ON": true,
+        "NUM_RECORDS": 5
+    }
 }

@@ -2,4 +2,5 @@ env.json
 venv
 *.db
 *.csv
+*.xlsx
 __pycache__

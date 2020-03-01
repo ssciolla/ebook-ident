@@ -12,12 +12,15 @@ from fuzzywuzzy import fuzz
 
 logger = logging.getLogger(__name__)
 
-UNIV_PATTERN = re.compile(r'Univ\.')
+# General patterns
 WS_PATTERN = re.compile(r'\s+')
 PUNC_PATTERN = re.compile(r'[,\.#:]')
-EBOOK_PATTERN = re.compile(r'e-?book')
 AMP_PATTERN = re.compile(r'&')
 
+# Imprint patterns
+UP_PATTERN = re.compile(r'\bup\b')
+UOF_PATTERN = re.compile(r'\bu of\b')
+UNIV_PATTERN = re.compile(r'\buniv\b')
 
 # Functions
 
@@ -29,52 +32,52 @@ def tokenize(input: str) -> Sequence[str]:
 
 def normalize(input: str) -> str:
     normalized_str = AMP_PATTERN.sub('and', PUNC_PATTERN.sub('', input)).lower()
-    logger.debug(normalized_str)
+    logger.debug(f'normalize: {input} -> {normalized_str}')
     return normalized_str
 
 
 def normalize_univ(input: str) -> str:
-    return UNIV_PATTERN.sub('University', input)
+    norm_input = UNIV_PATTERN.sub('university', UOF_PATTERN.sub('university of', UP_PATTERN.sub('university press', input)))
+    logger.debug(f'normalize_univ: {input} -> {norm_input}')
+    return norm_input
 
 
-def look_for_ebook(input: str) -> bool:
-    norm_input = normalize(input)
-    result = EBOOK_PATTERN.search(norm_input)
-    if result:
-        return True
-    return False
-
-
-def create_compare_func(left: str, thresh: float, transforms: Sequence[Callable] = []) -> Callable:
-    left_tokens = tokenize(left)
-
-    norm_left = left
-    for transform in transforms:
-        norm_left = transform(norm_left)
-    norm_left = normalize(norm_left)
+def create_compare_func(lefts: Sequence[str], thresh: float, transforms: Sequence[Callable] = []) -> Callable:
+    left_dicts = []
+    for left in lefts:
+        left_tokens = tokenize(left)
+        norm_left = normalize(left)
+        for transform in transforms:
+            norm_left = transform(norm_left)
+        left_dicts.append({'orig_left': left, 'left_tokens': left_tokens, 'norm_left': norm_left})
 
     def compare_func(right: str) -> bool:
-        norm_right = right
+        norm_right = normalize(right)
         for transform in transforms:
             norm_right = transform(norm_right)
-        norm_right = normalize(norm_right)
-        full_lev_ratio = fuzz.ratio(norm_left, norm_right)
-        logger.debug(full_lev_ratio)
-        if full_lev_ratio >= thresh:
-            logger.info(f'The full Levenstein distance ratio of {full_lev_ratio} met the {thresh} threshold.')
-            return True
 
-        right_tokens = tokenize(right)
-        token_diff = abs(len(left_tokens) - len(right_tokens))
-        logger.debug(token_diff)
-        if token_diff < 3 and len(left) > 4:
-            partial_lev_ratio = fuzz.partial_ratio(norm_left, norm_right)
-            logger.debug(partial_lev_ratio)
-            if partial_lev_ratio >= thresh:
-                logger.info(f'The partial Levenstein distance ratio of {full_lev_ratio} met the {thresh} threshold.')
+        for left_dict in left_dicts:
+            one_norm_left = left_dict['norm_left']
+            full_lev_ratio = fuzz.ratio(one_norm_left, norm_right)
+            logger.debug(full_lev_ratio)
+            if full_lev_ratio >= thresh:
+                logger.debug(f'The full Levenstein distance ratio of {full_lev_ratio} met the {thresh} threshold.')
+                logger.debug(f'{one_norm_left} ~ {norm_right}')
                 return True
-        
-        logger.info(f'No Levenstein distance ratios met the {thresh} threshold.')
+
+            # This won't catch one word publishers (e.g. Holt) if the alternative representation has multiple words
+            right_tokens = tokenize(right)
+            token_diff = abs(len(left_dict['left_tokens']) - len(right_tokens))
+            logger.debug(token_diff)
+            if token_diff < 3 and len(left) > 4:
+                partial_lev_ratio = fuzz.partial_ratio(one_norm_left, norm_right)
+                logger.debug(partial_lev_ratio)
+                if partial_lev_ratio >= thresh:
+                    logger.warning(f'The partial Levenstein distance ratio of {partial_lev_ratio} met the {thresh} threshold.')
+                    logger.warning(f'{one_norm_left} ~ {norm_right}')
+                    return True
+            
+        logger.debug(f'No Levenstein distance ratios met the {thresh} threshold.')
         return False
 
     return compare_func
