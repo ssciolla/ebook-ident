@@ -47,7 +47,8 @@ def set_up_database() -> None:
         CREATE TABLE 'request' (
             'request_id' INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
             'request_url' TEXT NOT NULL UNIQUE,
-            'response' BLOB
+            'response' BLOB NOT NULL,
+            'timestamp' TEXT NOT NULL
         );
     '''
     create_table('request', request_create_statement)
