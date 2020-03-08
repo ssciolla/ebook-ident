@@ -12,7 +12,7 @@ import requests
 from bs4 import BeautifulSoup
 
 # local libraries
-from compare import create_compare_func, normalize, normalize_univ
+from compare import create_compare_func, normalize, normalize_univ, NA_PATTERN
 from create_db_cache import ENGINE, DB_CACHE_PATH_ELEMS, set_up_database
 
 
@@ -51,6 +51,16 @@ def create_full_title(record: Dict[str, str]):
         full_title += ' ' + record['Subtitle']
     logger.debug('full_title: ' + full_title)
     return full_title
+
+
+def mint_wc_key_name(key: str, subfield: str, index: int, num_subs: int, num_states) -> str:
+    key_name = key
+    if num_subs > 1:
+        key_name += " " + subfield
+    if num_states > 1:
+        key_name += " " + str(index)
+    return key_name
+
 
 # Explode groups of related columns from one row into separate dictionaries
 def unflatten(book_record: Dict[str, str], column_prefixes: Sequence[str]) -> Sequence[Dict[str, str]]:
@@ -108,7 +118,8 @@ def make_request_using_cache(url: str, params: Dict[str, str]) -> str:
     response_text = response_obj.text
     new_request_df = pd.DataFrame({
         'request_url': [unique_req_url],
-        'response': [response_text]
+        'response': [response_text],
+        'timestamp': datetime.now().isoformat()
     })
     logger.debug(new_request_df)
     new_request_df.to_sql('request', ENGINE, if_exists='append', index=False)
@@ -116,6 +127,35 @@ def make_request_using_cache(url: str, params: Dict[str, str]) -> str:
 
 
 # Functions - Processing
+
+def parse_marcxml(xml_record: str) -> Sequence[Dict[str, str]]:
+    result_xml = BeautifulSoup(xml_record, 'xml')
+    number_of_records = result_xml.find("numberOfRecords").text
+    logger.debug(number_of_records)
+
+    records = result_xml.find_all("recordData")
+    record_dicts = []
+    for record in records:
+        record_dict = {}
+        for marc_key in MARCXML_LOOKUP:
+            marc_field = MARCXML_LOOKUP[marc_key]
+            statements = record.find_all('datafield', tag=marc_field['datafield'])
+            num = 0
+            for statement in statements:
+                num += 1
+                subfields = marc_field['subfields']
+                for subfield in subfields:
+                    sub_statement = statement.find('subfield', code=subfield)
+                    if sub_statement and not NA_PATTERN.search(sub_statement.text):
+                        key_name = mint_wc_key_name(marc_key, subfield, num, len(subfields), len(statements))
+                        record_dict[key_name] = sub_statement.text
+            if num > 1:
+                logger.warning(f'Multiple values found for {marc_key}!')
+                logger.warning(record_dict)
+            logger.debug(record_dict)
+        record_dicts.append(record_dict)
+    return record_dicts
+    
 
 # Use the Bibliographic Resource tool to search for records and parse the returned MARC XML
 def look_up_book_in_worldcat(book_dict: Dict[str, str]) -> pd.DataFrame:
@@ -141,29 +181,8 @@ def look_up_book_in_worldcat(book_dict: Dict[str, str]) -> pd.DataFrame:
     if not result:
         return pd.DataFrame()
 
-    result_xml = BeautifulSoup(result, 'xml')
-    number_of_records = result_xml.find("numberOfRecords").text
-    logger.debug(number_of_records)
-
-    records = result_xml.find_all("recordData")
-    record_dict_list = []
-    for record in records:
-        record_dict = {}
-        for key in MARCXML_LOOKUP:
-            marc_field = MARCXML_LOOKUP[key]
-            statement = record.find('datafield', tag=marc_field['datafield'])
-            if not statement or 'NA' in statement:
-                value = pd.NA
-            else:
-                sub_statement = statement.find("subfield", code=marc_field['subfield'])
-                if not sub_statement or 'NA' in sub_statement:
-                    value = pd.NA
-                else:
-                    value = sub_statement.text
-            record_dict[key] = value
-        record_dict_list.append(record_dict)
-    
-    records_df = pd.DataFrame(record_dict_list)
+    records = parse_marcxml(result)
+    records_df = pd.DataFrame(records)
     logger.info(f'Number of WorldCat records found: {len(records_df)}')
     logger.debug(records_df.head(10))
     return records_df
@@ -191,8 +210,8 @@ def run_checks_and_return_matches(orig_record: Dict[str, str], results_df: pd.Da
 
     # Run comparisons
     checked_df['Title_Match'] = checked_df['Full_Title'].map(compare_to_title, na_action='ignore')
-    checked_df['Publisher_Match'] = checked_df['Imprint'].map(compare_to_publisher, na_action='ignore')
-    logger.info(checked_df[['Title', 'Imprint', 'Title_Match', 'Publisher_Match']])
+    checked_df['Publisher_Match'] = checked_df['Publisher'].map(compare_to_publisher, na_action='ignore')
+    logger.info(checked_df[['Title', 'Publisher', 'Title_Match', 'Publisher_Match']])
 
     # Gather matching manifestation records
     manifest_df = checked_df.loc[(

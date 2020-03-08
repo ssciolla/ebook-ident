@@ -1,38 +1,42 @@
 {
     "ISBN": {
         "datafield": "020",
-        "subfield": "a"
+        "subfields": ["a", "q"]
     },
     "Author": {
         "datafield": "100",
-        "subfield": "a"
+        "subfields": ["a"]
     },
     "Title": {
         "datafield": "245", 
-        "subfield": "a"
+        "subfields": ["a"]
     },
     "Subtitle": {
         "datafield": "245",
-        "subfield": "b"
+        "subfields": ["b"]
     },
-    "Imprint": {
+    "Edition": {
+        "datafield": "250",
+        "subfields": ["a"]
+    },
+    "Publisher": {
         "datafield": "260",
-        "subfield": "b"
+        "subfields": ["b"]
     },
     "Publication_Date": {
         "datafield": "260", 
-        "subfield": "c"
+        "subfields": ["c"]
     },
     "Physical_Description": {
         "datafield": "300",
-        "subfield": "a"
+        "subfields": ["a"]
     },
     "Series": {
         "datafield": "490", 
-        "subfield": "a"
+        "subfields": ["a"]
     },
     "Genre/Form": {
         "datafield": "655",
-        "subfield": "a"
+        "subfields": ["a"]
     }
 }

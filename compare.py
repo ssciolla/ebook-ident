@@ -14,13 +14,16 @@ logger = logging.getLogger(__name__)
 
 # General patterns
 WS_PATTERN = re.compile(r'\s+')
+NA_PATTERN = re.compile(r'\b<?n\.?a\.?>?\b', flags=re.IGNORECASE)
+
 PUNC_PATTERN = re.compile(r'[,\.#:]')
 AMP_PATTERN = re.compile(r'&')
 
-# Imprint patterns
+# Publisher patterns
 UP_PATTERN = re.compile(r'\bup\b')
 UOF_PATTERN = re.compile(r'\bu of\b')
 UNIV_PATTERN = re.compile(r'\buniv\b')
+
 
 # Functions
 
