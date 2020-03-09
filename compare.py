@@ -2,9 +2,10 @@
 
 # standard libraries
 import logging, re
-from typing import Callable, Sequence
+from typing import Callable, Optional, Sequence
 
 # third-party libraries
+import pandas as pd
 from fuzzywuzzy import fuzz
 
 
@@ -18,11 +19,22 @@ NA_PATTERN = re.compile(r'\b<?n\.?a\.?>?\b', flags=re.IGNORECASE)
 
 PUNC_PATTERN = re.compile(r'[,\.#:]')
 AMP_PATTERN = re.compile(r'&')
+PAREN_PATTERN = re.compile(r'[\(\)]')
+PAREN_CONTENT_PATTERN = re.compile(r'\(([^\(]+)\)')
+
+ISBN_PATTERN = re.compile(r'[0-9]')
 
 # Publisher patterns
 UP_PATTERN = re.compile(r'\bup\b')
 UOF_PATTERN = re.compile(r'\bu of\b')
 UNIV_PATTERN = re.compile(r'\buniv\b')
+
+# Format patterns
+FORMAT_PATTERNS = {
+    'Hardcover': [re.compile(r'\bhard[ -]?cover\b'), re.compile(r'\bhbk?\b'), re.compile(r'\bhcr??\b')],
+    'Paperback': [re.compile(r'\bpaper[ -]?back\b'), re.compile(r'\bpbk?\b')],
+    'Ebook': [re.compile(r'\be[- ]?book\b'), re.compile(r'electronic'), re.compile(r'\bebk?\b')]
+}
 
 
 # Functions
@@ -45,6 +57,54 @@ def normalize_univ(input: str) -> str:
     return norm_input
 
 
+def polish_isbn(input: str) -> str:
+    return input.split()[0]
+
+
+# Extract extra or parenthetical content from a cell (used on ISBN a)
+def extract_extra_atoms(input: str) -> Optional[str]:
+    if PAREN_CONTENT_PATTERN.match(input):
+        groups = PAREN_CONTENT_PATTERN.match(input).groups()
+        logger.info(f'extract_extra_atoms: {groups}')
+        if len(groups) > 1:
+            logger.warning('Multiple parenthetical expressions found.')
+            return ' '.join(groups)
+        else:
+            return groups[0]
+    if len(input.split()) > 1:
+        extra_atoms = ' '.join(input.split()[1:])
+        return extra_atoms
+    return pd.NA
+
+
+def classify_by_format(field_to_analyze: str) -> str:
+    normal_field = normalize(field_to_analyze)
+
+    matches = []
+    for format in FORMAT_PATTERNS.keys():
+        patterns = FORMAT_PATTERNS[format]
+        for pattern in patterns:
+            result = pattern.search(normal_field)
+            if result is not None:
+                matches.append(format)
+
+    unique_matches = []
+    for match in matches:
+        if match not in unique_matches:
+            unique_matches.append(match)
+
+    if len(unique_matches) == 0:
+        format = pd.NA
+    elif len(unique_matches) == 1:
+        format = matches[0]
+    else:
+        match_format_str = ",".join([match_format for match_format in unique_matches])
+        logger.error(f'Matched with multiple formats: {match_format_str}')
+    return format
+
+
+# Create a comparison function for mapping along columns that finds the Levenshtein Difference between a 
+# a column value (right) and one or more given values from the HEB record (lefts)
 def create_compare_func(lefts: Sequence[str], thresh: float, transforms: Sequence[Callable] = []) -> Callable:
     left_dicts = []
     for left in lefts:
