@@ -8,7 +8,6 @@ from typing import Dict, Sequence
 # third-party libraries
 import numpy as np
 import pandas as pd
-import requests
 from bs4 import BeautifulSoup
 
 # local libraries
@@ -19,7 +18,7 @@ from compare import classify_by_format, \
                     polish_isbn, \
                     normalize_univ, \
                     NA_PATTERN
-from create_db_cache import ENGINE, DB_CACHE_PATH_ELEMS, set_up_database
+from db_cache import make_request_using_cache, set_up_database
 
 
 # Initialize settings and global variables
@@ -35,7 +34,7 @@ except FileNotFoundError:
 logging.basicConfig(level=ENV.get('LOG_LEVEL', 'DEBUG'))
 
 # Set up database if necessary
-if not os.path.isfile(os.path.join(*DB_CACHE_PATH_ELEMS)):
+if not os.path.isfile(os.path.join(*ENV['DB_CACHE_PATH'])):
     set_up_database()
 
 BOOKS_CSV_PATH_ELEMS = ENV['BOOKS_CSV_PATH']
@@ -93,52 +92,6 @@ def unflatten(book_record: Dict[str, str], column_prefixes: Sequence[str]) -> Se
             num += 1
     logger.debug(embedded_records)
     return embedded_records
-
-
-# Functions - Caching
-
-# Create unique request string for WorldCat Search API caching
-def create_unique_request_str(base_url: str, params_dict: dict, private_keys: list =["wskey"]) -> str:
-    sorted_params = sorted(params_dict.keys())
-    fields = []
-    for param in sorted_params:
-        if param not in private_keys:
-            fields.append('{}-{}'.format(param, params_dict[param]))
-    return base_url + '&'.join(fields)
-
-
-# Make the request and cache new data, or retrieves the cached data
-def make_request_using_cache(url: str, params: Dict[str, str]) -> str:
-    unique_req_url = create_unique_request_str(url, params)
-    cache_df = pd.read_sql(f'''
-        SELECT * FROM request WHERE request_url = '{unique_req_url}';
-    ''', ENGINE)
-
-    if not cache_df.empty:
-        logger.debug('Retrieving cached data...')
-        return cache_df.iloc[0]['response']
-
-    logger.debug('Making a request for new data...')
-    response_obj = requests.get(url, params)
-    logger.debug(response_obj.url)
-    status_code = response_obj.status_code
-    if status_code == 403:
-        logger.warning('Reached API limit')
-        return ''
-    elif status_code != 200:
-        logger.debug(response_obj.text)
-        logger.warning(f'Received irregular status code: {status_code}')
-        return ''
-
-    response_text = response_obj.text
-    new_request_df = pd.DataFrame({
-        'request_url': [unique_req_url],
-        'response': [response_text],
-        'timestamp': datetime.now().isoformat()
-    })
-    logger.debug(new_request_df)
-    new_request_df.to_sql('request', ENGINE, if_exists='append', index=False)
-    return response_text
 
 
 # Functions - Processing
