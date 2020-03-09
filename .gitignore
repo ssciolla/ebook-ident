@@ -1,6 +1,15 @@
+# config
 env.json
 venv
-*.db
+
+# data
 *.csv
+*.db
+*.xml
 *.xlsx
+
+# python
 __pycache__
+
+# ide
+.vscode
