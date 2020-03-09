@@ -12,7 +12,13 @@ import requests
 from bs4 import BeautifulSoup
 
 # local libraries
-from compare import create_compare_func, normalize, normalize_univ, NA_PATTERN
+from compare import classify_by_format, \
+                    create_compare_func, \
+                    extract_extra_atoms, \
+                    normalize, \
+                    polish_isbn, \
+                    normalize_univ, \
+                    NA_PATTERN
 from create_db_cache import ENGINE, DB_CACHE_PATH_ELEMS, set_up_database
 
 
@@ -43,9 +49,15 @@ with open(os.path.join('config', 'marcxml_lookup.json')) as lookup_file:
     MARCXML_LOOKUP = json.loads(lookup_file.read())
 
 
+with open(os.path.join('config', 'fm_to_identify.json')) as fm_to_identify_cw:
+    FM_TO_IDENTIFY_CW = json.loads(fm_to_identify_cw.read())
+with open(os.path.join('config', 'identify_to_fm.json')) as identify_to_fm_cw:
+    IDENTIFY_TO_FM_CW = json.loads(identify_to_fm_cw.read())
+
+
 # Functions - Utilities
 
-def create_full_title(record: Dict[str, str]):
+def create_full_title(record: Dict[str, str]) -> str:
     full_title = record['Title']
     if 'Subtitle' in record.keys() and record["Subtitle"] not in ["N/A", ""]:
         full_title += ' ' + record['Subtitle']
@@ -74,7 +86,10 @@ def unflatten(book_record: Dict[str, str], column_prefixes: Sequence[str]) -> Se
             embedded_record = {}
             for column_prefix in column_prefixes:
                 embedded_record[column_prefix] = book_record[f"{column_prefix} {num}"]
-            embedded_records.append(embedded_record)
+            # Drop null dictionaries
+            non_null_values = pd.Series(list(embedded_record.values())).dropna().to_list()
+            if len(non_null_values) > 0:
+                embedded_records.append(embedded_record)
             num += 1
     logger.debug(embedded_records)
     return embedded_records
@@ -131,7 +146,8 @@ def make_request_using_cache(url: str, params: Dict[str, str]) -> str:
 def parse_marcxml(xml_record: str) -> Sequence[Dict[str, str]]:
     result_xml = BeautifulSoup(xml_record, 'xml')
     number_of_records = result_xml.find("numberOfRecords").text
-    logger.debug(number_of_records)
+    if int(number_of_records) > 100:
+        logger.error(f'Number of records > 100: {number_of_records}')
 
     records = result_xml.find_all("recordData")
     record_dicts = []
@@ -146,10 +162,12 @@ def parse_marcxml(xml_record: str) -> Sequence[Dict[str, str]]:
                 subfields = marc_field['subfields']
                 for subfield in subfields:
                     sub_statement = statement.find('subfield', code=subfield)
+                    key_name = mint_wc_key_name(marc_key, subfield, num, len(subfields), len(statements))
                     if sub_statement and not NA_PATTERN.search(sub_statement.text):
-                        key_name = mint_wc_key_name(marc_key, subfield, num, len(subfields), len(statements))
                         record_dict[key_name] = sub_statement.text
-            if num > 1:
+                    else:
+                        record_dict[key_name] = pd.NA
+            if num > 1 and marc_key != 'ISBN':
                 logger.warning(f'Multiple values found for {marc_key}!')
                 logger.warning(record_dict)
             logger.debug(record_dict)
@@ -188,6 +206,64 @@ def look_up_book_in_worldcat(book_dict: Dict[str, str]) -> pd.DataFrame:
     return records_df
 
 
+# Determines format for a row on multiple analyzed columns
+def determine_format(row: pd.Series):
+    results = row[['Q Format', 'Overflow Format']].drop_duplicates().dropna()
+    results = [result for result in results if result != "#NA#"]
+    if len(results) > 1:
+        logger.warning('Different formats were found ')
+        logger.warning(results)
+    elif len(results) < 1:
+        return pd.NA
+    else:
+        return results[0]
+
+
+def classify_and_find_unique_manifests(matches_df: pd.DataFrame):
+    all_isbn_dicts = []
+    for match_row_tup in matches_df.iterrows():
+        match_dict = match_row_tup[1].to_dict()
+        isbn_dicts = unflatten(match_dict, ['ISBN a', 'ISBN q'])
+        if 'Publisher' in match_dict.keys():
+            publisher = match_dict['Publisher']
+        else:
+            publishers = [pub_dict['Publisher'] for pub_dict in unflatten(match_dict, ['Publisher'])]
+            logger.warning(f'Multiple publishers: {publishers}')
+            publisher = publishers[0]
+        [isbn_dict.update({'Publisher': publisher}) for isbn_dict in isbn_dicts]
+        all_isbn_dicts += isbn_dicts
+
+    all_isbns_df = pd.DataFrame(all_isbn_dicts)
+
+    # Transform and analyze
+    all_isbns_df['ISBN'] = all_isbns_df['ISBN a'].map(polish_isbn, na_action='ignore')
+    all_isbns_df['ISBN Overflow'] = all_isbns_df['ISBN a'].map(extract_extra_atoms, na_action='ignore')
+ 
+    unique_isbn_format_df = all_isbns_df.copy()
+    # Save unique ISBNS for later analysis
+    unique_isbns = unique_isbn_format_df['ISBN'].drop_duplicates()
+
+    unique_isbn_format_df = all_isbns_df.fillna('#NA#').drop_duplicates()    
+    unique_isbn_format_df['Q Format'] = all_isbns_df['ISBN q'].map(classify_by_format, na_action='ignore').fillna('#NA#')
+    unique_isbn_format_df['Overflow Format'] = unique_isbn_format_df['ISBN Overflow'].map(classify_by_format, na_action='ignore').fillna('#NA#')
+    unique_isbn_format_df['Format'] = unique_isbn_format_df.apply(determine_format, axis='columns').fillna('#NA#')
+
+    unique_isbn_format_df = unique_isbn_format_df.drop_duplicates(subset=['ISBN', 'Format'])
+    unique_isbn_format_df = unique_isbn_format_df.where(unique_isbn_format_df != '#NA#', pd.NA)
+    complete_isbn_format_df = unique_isbn_format_df.copy().dropna(axis='index', subset=['ISBN', 'Format'])
+
+    for isbn_format_row_tup in unique_isbn_format_df.iterrows():
+        isbn_format_series = isbn_format_row_tup[1]
+        if isbn_format_series['ISBN'] in unique_isbns and isbn_format_series['Format'] == pd.NA:
+            complete_isbn_format_df = complete_isbn_format_df.append(isbn_format_series)
+
+    logger.debug(complete_isbn_format_df.head(15))
+    complete_isbn_format_df = complete_isbn_format_df.drop(columns=['ISBN a', 'ISBN q', 'ISBN Overflow', 'Overflow Format', 'Q Format'])
+    complete_isbn_format_df = complete_isbn_format_df.assign(**{'Source': 'WorldCat'})
+    logger.debug(complete_isbn_format_df)
+    return complete_isbn_format_df
+
+
 def run_checks_and_return_matches(orig_record: Dict[str, str], results_df: pd.DataFrame) -> pd.DataFrame:
     checked_df = results_df.copy()
     logger.debug(orig_record)
@@ -218,13 +294,14 @@ def run_checks_and_return_matches(orig_record: Dict[str, str], results_df: pd.Da
         (checked_df['Title_Match']) & (checked_df['Publisher_Match'])
     )]
     logger.info(f'Matched {len(manifest_df)} records!')
-    logger.info(manifest_df.head(20))
 
     # Add Full_Title and HEB ID from HEB
     manifest_df = manifest_df.assign(**{
         'HEB_ID': orig_record['ID'],
         'HEB_Title': orig_record['Title']
     })
+
+    logger.info(manifest_df.head(20))
     return manifest_df
 
 
@@ -237,18 +314,8 @@ def identify_ebooks() -> None:
     else:
         press_books_df = pd.read_csv(input_path, dtype=str)
 
-    # Necessary for the moment because column names are inconsistent
-    press_books_df = press_books_df.rename(columns={
-        'Author last': 'Author_Last',
-        'Publisher': 'Publisher 1',
-        'ISBN1_13': 'ISBN_13 1',
-        'Pub Format': 'Pub_Format 1',
-        'ISBN2_13': 'ISBN_13 2',
-        'Pub Format 2': 'Pub_Format 2',
-        'Publisher 3 ISBN': 'ISBN 3',
-        'ISBN3_13': 'ISBN_13 3',
-        'Publisher 3 Format': 'Pub_Format 3'
-    })
+    # Crosswalk to consistent column names
+    press_books_df = press_books_df.rename(columns=FM_TO_IDENTIFY_CW)
     logger.debug(press_books_df.columns)
 
     # Limit number of records for testing purposes
@@ -267,16 +334,17 @@ def identify_ebooks() -> None:
 
         wc_records_df = look_up_book_in_worldcat(new_book_dict)
         new_matches_df = run_checks_and_return_matches(new_book_dict, wc_records_df)
+        result = classify_and_find_unique_manifests(new_matches_df)
 
         if new_matches_df.empty:
-            logger.warning(f'No matching records with isbns were found!')
+            logger.warning(f'No matching records with ISBNs were found!')
             non_matching_books.append(new_book_dict)
         else:
             num_books_with_matches += 1
-            isbns = new_matches_df['ISBN'].drop_duplicates().dropna().to_list()
-            logger.info(f'Book successfully matched with record(s) with {len(isbns)} unique ISBN(s): {isbns}')
-            logger.info(new_matches_df)
-            match_manifest_df = match_manifest_df.append(new_matches_df)
+            # isbns = new_matches_df['ISBN'].drop_duplicates().dropna().to_list()
+            # logger.info(f'Book successfully matched with record(s) with {len(isbns)} unique ISBN(s): {isbns}')
+            # logger.info(new_matches_df)
+            # match_manifest_df = match_manifest_df.append(new_matches_df)
 
     # Generate CSV output
     if not match_manifest_df.empty:
@@ -288,7 +356,7 @@ def identify_ebooks() -> None:
         no_isbn_matches_df.to_csv(os.path.join('data', 'no_isbn_matches.csv'), index=False)
 
     # Log Summary Report
-    report_str = '** Sumary Report from identify.py **\n\n'
+    report_str = '** Summary Report from identify.py **\n\n'
     report_str += f'-- Total number of books included in search: {len(press_books_df)}\n'
     report_str += f'-- Number of books successfully matched with records with ISBNs: {num_books_with_matches}\n'
     report_str += f'-- Number of books with no matching records: {len(non_matching_books)}\n'
