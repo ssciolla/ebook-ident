@@ -46,8 +46,6 @@ TEST_MODE_OPTS = ENV['TEST_MODE']
 
 with open(os.path.join('config', 'marcxml_lookup.json')) as lookup_file:
     MARCXML_LOOKUP = json.loads(lookup_file.read())
-
-
 with open(os.path.join('config', 'fm_to_identify.json')) as fm_to_identify_cw:
     FM_TO_IDENTIFY_CW = json.loads(fm_to_identify_cw.read())
 with open(os.path.join('config', 'identify_to_fm.json')) as identify_to_fm_cw:
@@ -213,7 +211,7 @@ def classify_and_find_unique_manifests(matches_df: pd.DataFrame):
     logger.debug(complete_isbn_format_df.head(15))
     complete_isbn_format_df = complete_isbn_format_df.drop(columns=['ISBN a', 'ISBN q', 'ISBN Overflow', 'Overflow Format', 'Q Format'])
     complete_isbn_format_df = complete_isbn_format_df.assign(**{'Source': 'WorldCat'})
-    logger.debug(complete_isbn_format_df)
+    logger.info(complete_isbn_format_df)
     return complete_isbn_format_df
 
 
@@ -258,7 +256,7 @@ def run_checks_and_return_matches(orig_record: Dict[str, str], results_df: pd.Da
     return manifest_df
 
 
-def identify_ebooks() -> None:
+def identify_books() -> None:
     # Load input data
     input_path = os.path.join(*BOOKS_CSV_PATH_ELEMS)
     if '.xlsx' in BOOKS_CSV_PATH_ELEMS[-1]:
@@ -276,32 +274,33 @@ def identify_ebooks() -> None:
         logger.info('TEST_MODE is ON.')
         press_books_df = press_books_df.iloc[:TEST_MODE_OPTS['NUM_RECORDS']]
 
-    # For each record, fetch WorldCat data, compare to record, and document results
+    # For each record, fetch WorldCat data, compare to record, analyze and accumulate matches
     match_manifest_df = pd.DataFrame({})
     non_matching_books = []
     num_books_with_matches = 0
 
     for press_book_row_tup in press_books_df.iterrows():
-        new_book_dict = press_book_row_tup[1].copy().to_dict()
+        new_book_dict = press_book_row_tup[1].to_dict()
         logger.info(new_book_dict)
 
         wc_records_df = look_up_book_in_worldcat(new_book_dict)
         new_matches_df = run_checks_and_return_matches(new_book_dict, wc_records_df)
-        result = classify_and_find_unique_manifests(new_matches_df)
+        unique_manifests_df = classify_and_find_unique_manifests(new_matches_df)
 
-        if new_matches_df.empty:
+        if unique_manifests_df.empty:
             logger.warning(f'No matching records with ISBNs were found!')
             non_matching_books.append(new_book_dict)
         else:
             num_books_with_matches += 1
-            # isbns = new_matches_df['ISBN'].drop_duplicates().dropna().to_list()
-            # logger.info(f'Book successfully matched with record(s) with {len(isbns)} unique ISBN(s): {isbns}')
-            # logger.info(new_matches_df)
-            # match_manifest_df = match_manifest_df.append(new_matches_df)
+            match_manifest_df = match_manifest_df.append(unique_manifests_df)
+            isbns = unique_manifests_df['ISBN'].drop_duplicates().to_list()
+            logger.info(f'Book successfully matched with record(s) with {len(isbns)} unique ISBN(s): {isbns}')
+
+    logger.debug('Matching Manifests')
+    logger.debug(match_manifest_df.describe())
 
     # Generate CSV output
     if not match_manifest_df.empty:
-        logger.debug(match_manifest_df)
         match_manifest_df.to_csv(os.path.join('data', 'matched_manifests.csv'), index=False)
 
     if non_matching_books:
@@ -320,4 +319,4 @@ def identify_ebooks() -> None:
 # Main Program
 
 if __name__ == '__main__':
-    identify_ebooks()
+    identify_books()
