@@ -56,9 +56,7 @@ To set up the project, perform these steps in order after using your command lin
     pip install -r requirements.txt
     ```
 
-#### Note for Windows users
-
-    Note for Windows users: the `python-Levenshtein` package may require additional dependencies to build. You can satisfy these by installing [Microsoft Visual Studio](https://visualstudio.microsoft.com/visual-cpp-build-tools/). 
+    **Note for Windows users:** the `python-Levenshtein` package may require additional software to build. You can satisfy these dependencies by installing [Microsoft Visual Studio](https://visualstudio.microsoft.com/visual-cpp-build-tools/), ensuring that you install the C++ language development tools. 
     
     Alternatively, you can download a pre-compiled binary from the [Unofficial Windows Binaries for Python Extension Packages](https://www.lfd.uci.edu/~gohlke/pythonlibs/#python-levenshtein). Note the maintainer warns that these binaries should only be used for testing. To install the `.whl` file, from within the activated virtual environment, run the following command, replacing `{absolute_path}` with the absolute path to the download.
     ```
