@@ -27,7 +27,7 @@ ENGINE = create_engine(f'sqlite:///{DB_CACHE_PATH_STR}')
 # Functions - Caching
 
 # Create unique request string for WorldCat Search API caching
-def create_unique_request_str(base_url: str, params_dict: Dict[str, str], private_keys: list =["wskey"]) -> str:
+def create_unique_request_str(base_url: str, params_dict: Dict[str, str], private_keys: list = ["wskey"]) -> str:
     sorted_params = sorted(params_dict.keys())
     fields = []
     for param in sorted_params:
@@ -36,7 +36,7 @@ def create_unique_request_str(base_url: str, params_dict: Dict[str, str], privat
     return base_url + '&'.join(fields)
 
 
-# Make the request and cache new data, or retrieves the cached data
+# Make the request and cache new data, or retrieve the cached data
 def make_request_using_cache(url: str, params: Dict[str, str]) -> str:
     unique_req_url = create_unique_request_str(url, params)
     cache_df = pd.read_sql(f'''

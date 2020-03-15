@@ -121,21 +121,21 @@ def parse_marcxml(xml_record: str) -> Sequence[Dict[str, str]]:
             if num > 1 and marc_key != 'ISBN':
                 logger.warning(f'Multiple values found for {marc_key}!')
                 logger.warning(record_dict)
-            logger.debug(record_dict)
+        logger.debug(record_dict)
         record_dicts.append(record_dict)
     return record_dicts
-    
+
 
 # Use the Bibliographic Resource tool to search for records and parse the returned MARC XML
 def look_up_book_in_worldcat(book_dict: Dict[str, str]) -> pd.DataFrame:
     # Generate query string
     full_title = create_full_title(book_dict)
     logger.info(f'Looking for "{full_title}" in WorldCat...')
-    
-    # I'm currently deciding not to normalize author string
+
     # Data currently has one author last name; otherwise I'd do what's commented below or process one-to-many relationship
     # query_author = normalize(f"{book_dict['Author_First']} {book_dict['Author_Last']})
-    query_author = book_dict['Author_Last']
+    # Replacing apostrophe because they are breaking query strings when they occur
+    query_author = book_dict['Author_Last'].replace("'", " ")
     query_title = normalize(full_title)
     query_str = f'srw.ti all "{query_title}" and srw.au all "{query_author}"'
     logger.debug(query_str)
@@ -146,9 +146,9 @@ def look_up_book_in_worldcat(book_dict: Dict[str, str]) -> pd.DataFrame:
         'frbrGrouping': 'off'
     }
     result = make_request_using_cache(WC_BIB_BASE_URL, params)
-    
+
     if not result:
-        return pd.DataFrame()
+        return pd.DataFrame({})
 
     records = parse_marcxml(result)
     records_df = pd.DataFrame(records)
@@ -171,6 +171,10 @@ def determine_format(row: pd.Series):
 
 
 def classify_and_find_unique_manifests(matches_df: pd.DataFrame):
+    if matches_df.empty:
+        return pd.DataFrame({})
+
+    logger.info(matches_df.columns)
     all_isbn_dicts = []
     for match_row_tup in matches_df.iterrows():
         match_dict = match_row_tup[1].to_dict()
@@ -186,15 +190,19 @@ def classify_and_find_unique_manifests(matches_df: pd.DataFrame):
 
     all_isbns_df = pd.DataFrame(all_isbn_dicts)
 
+    if all_isbns_df.empty:
+        return pd.DataFrame({})
+
+    logger.debug(all_isbns_df.columns)
     # Transform and analyze
     all_isbns_df['ISBN'] = all_isbns_df['ISBN a'].map(polish_isbn, na_action='ignore')
     all_isbns_df['ISBN Overflow'] = all_isbns_df['ISBN a'].map(extract_extra_atoms, na_action='ignore')
- 
+
     unique_isbn_format_df = all_isbns_df.copy()
     # Save unique ISBNS for later analysis
     unique_isbns = unique_isbn_format_df['ISBN'].drop_duplicates()
 
-    unique_isbn_format_df = all_isbns_df.fillna('#NA#').drop_duplicates()    
+    unique_isbn_format_df = all_isbns_df.fillna('#NA#').drop_duplicates()
     unique_isbn_format_df['Q Format'] = all_isbns_df['ISBN q'].map(classify_by_format, na_action='ignore').fillna('#NA#')
     unique_isbn_format_df['Overflow Format'] = unique_isbn_format_df['ISBN Overflow'].map(classify_by_format, na_action='ignore').fillna('#NA#')
     unique_isbn_format_df['Format'] = unique_isbn_format_df.apply(determine_format, axis='columns').fillna('#NA#')
@@ -207,6 +215,8 @@ def classify_and_find_unique_manifests(matches_df: pd.DataFrame):
         isbn_format_series = isbn_format_row_tup[1]
         if isbn_format_series['ISBN'] in unique_isbns and isbn_format_series['Format'] == pd.NA:
             complete_isbn_format_df = complete_isbn_format_df.append(isbn_format_series)
+            logger.info("ISBN without format was added!")
+            logger.info(isbn_format_series)
 
     logger.debug(complete_isbn_format_df.head(15))
     complete_isbn_format_df = complete_isbn_format_df.drop(columns=['ISBN a', 'ISBN q', 'ISBN Overflow', 'Overflow Format', 'Q Format'])
@@ -219,6 +229,9 @@ def run_checks_and_return_matches(orig_record: Dict[str, str], results_df: pd.Da
     checked_df = results_df.copy()
     logger.debug(orig_record)
     logger.debug(checked_df)
+
+    if checked_df.empty:
+        return pd.DataFrame({})
 
     # Create comparison functions
     full_title = create_full_title(orig_record)
