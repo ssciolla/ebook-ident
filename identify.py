@@ -170,22 +170,52 @@ def determine_format(row: pd.Series):
         return results[0]
 
 
-def classify_and_find_unique_manifests(matches_df: pd.DataFrame):
+def run_checks_and_return_matches(orig_record: Dict[str, str], results_df: pd.DataFrame) -> pd.DataFrame:
+    checked_df = results_df.copy()
+    logger.debug(orig_record)
+    logger.debug(checked_df)
+
+    if checked_df.empty:
+        return pd.DataFrame({})
+
+    # Create comparison functions
+    full_title = create_full_title(orig_record)
+    compare_to_title = create_compare_func([full_title], 85)
+
+    known_publishers = []
+    for pub_dict in unflatten(orig_record, ['Publisher']):
+        if pd.notna(pub_dict['Publisher']):
+            known_publishers.append(pub_dict['Publisher'])
+    logger.debug(known_publishers)
+    compare_to_publisher = create_compare_func(known_publishers, 85, [normalize_univ])
+
+    # Create full title column
+    checked_df['Full_Title'] = checked_df['Title'] + checked_df['Subtitle']
+    logger.debug(checked_df['Full_Title'])
+
+    # Run comparisons
+    checked_df['Title_Match'] = checked_df['Full_Title'].map(compare_to_title, na_action='ignore')
+    checked_df['Publisher_Match'] = checked_df['Publisher'].map(compare_to_publisher, na_action='ignore')
+    logger.info(checked_df[['Title', 'Publisher', 'Title_Match', 'Publisher_Match']])
+
+    # Gather matching manifestation records
+    manifest_df = checked_df.loc[(
+        (checked_df['Title_Match']) & (checked_df['Publisher_Match'])
+    )]
+
+    logger.info(f'Matched {len(manifest_df)} records!')
+    logger.info(manifest_df.head(20))
+    return manifest_df
+
+
+def classify_and_find_unique_manifests(orig_record: Dict[str, str], matches_df: pd.DataFrame):
     if matches_df.empty:
         return pd.DataFrame({})
 
-    logger.info(matches_df.columns)
     all_isbn_dicts = []
     for match_row_tup in matches_df.iterrows():
         match_dict = match_row_tup[1].to_dict()
         isbn_dicts = unflatten(match_dict, ['ISBN a', 'ISBN q'])
-        if 'Publisher' in match_dict.keys():
-            publisher = match_dict['Publisher']
-        else:
-            publishers = [pub_dict['Publisher'] for pub_dict in unflatten(match_dict, ['Publisher'])]
-            logger.warning(f'Multiple publishers: {publishers}')
-            publisher = publishers[0]
-        [isbn_dict.update({'Publisher': publisher}) for isbn_dict in isbn_dicts]
         all_isbn_dicts += isbn_dicts
 
     all_isbns_df = pd.DataFrame(all_isbn_dicts)
@@ -221,52 +251,15 @@ def classify_and_find_unique_manifests(matches_df: pd.DataFrame):
     logger.debug(complete_isbn_format_df.head(15))
     complete_isbn_format_df = complete_isbn_format_df.drop(columns=['ISBN a', 'ISBN q', 'ISBN Overflow', 'Overflow Format', 'Q Format'])
     complete_isbn_format_df = complete_isbn_format_df.assign(**{'Source': 'WorldCat'})
-    logger.info(complete_isbn_format_df)
-    return complete_isbn_format_df
-
-
-def run_checks_and_return_matches(orig_record: Dict[str, str], results_df: pd.DataFrame) -> pd.DataFrame:
-    checked_df = results_df.copy()
-    logger.debug(orig_record)
-    logger.debug(checked_df)
-
-    if checked_df.empty:
-        return pd.DataFrame({})
-
-    # Create comparison functions
-    full_title = create_full_title(orig_record)
-    compare_to_title = create_compare_func([full_title], 85)
-
-    known_publishers = []
-    for pub_dict in unflatten(orig_record, ['Publisher']):
-        if pd.notna(pub_dict['Publisher']):
-            known_publishers.append(pub_dict['Publisher'])
-    logger.debug(known_publishers)
-    compare_to_publisher = create_compare_func(known_publishers, 85, [normalize_univ])
-
-    # Create full title column
-    checked_df['Full_Title'] = checked_df['Title'] + checked_df['Subtitle']
-    logger.debug(checked_df['Full_Title'])
-
-    # Run comparisons
-    checked_df['Title_Match'] = checked_df['Full_Title'].map(compare_to_title, na_action='ignore')
-    checked_df['Publisher_Match'] = checked_df['Publisher'].map(compare_to_publisher, na_action='ignore')
-    logger.info(checked_df[['Title', 'Publisher', 'Title_Match', 'Publisher_Match']])
-
-    # Gather matching manifestation records
-    manifest_df = checked_df.loc[(
-        (checked_df['Title_Match']) & (checked_df['Publisher_Match'])
-    )]
-    logger.info(f'Matched {len(manifest_df)} records!')
 
     # Add Full_Title and HEB ID from HEB
-    manifest_df = manifest_df.assign(**{
+    complete_isbn_format_df = complete_isbn_format_df.assign(**{
         'HEB_ID': orig_record['ID'],
-        'HEB_Title': orig_record['Title']
+        'HEB_Title': orig_record['Title'],
+        'Source': 'WorldCat'
     })
-
-    logger.info(manifest_df.head(20))
-    return manifest_df
+    logger.info(complete_isbn_format_df)
+    return complete_isbn_format_df
 
 
 def identify_books() -> None:
@@ -298,7 +291,7 @@ def identify_books() -> None:
 
         wc_records_df = look_up_book_in_worldcat(new_book_dict)
         new_matches_df = run_checks_and_return_matches(new_book_dict, wc_records_df)
-        unique_manifests_df = classify_and_find_unique_manifests(new_matches_df)
+        unique_manifests_df = classify_and_find_unique_manifests(new_book_dict, new_matches_df)
 
         if unique_manifests_df.empty:
             logger.warning(f'No matching records with ISBNs were found!')
