@@ -108,8 +108,9 @@ python identify.py
 
 Currently, the project has two primary outputs. These are likely to change if work proceeds on this project in the future.
 
-    1. `matched_manifests.csv`: A CSV containing the ISBN and Format of WorldCat records that matched with one of the input book records. The records also contain the ID and title from the corresponding original book record, as well as a `Source` column indicating these records came from WorldCat.
-    2. `no_isbn_matches.csv`: a CSV containing the original records of books that the workflow did not produce any results for, likely because WorldCat returned no results for the title, no results passed the matching algorithm, or no results had ISBNs. Future work might focus on determining why these failed and deciding whether the algorithm needs to be tuned or expanded upon to collect more data.
+1. `matched_manifests.csv`: A CSV containing the ISBN and Format of WorldCat records that matched with one of the input book records. The records also contain the ID and title from the corresponding original book record, as well as a `Source` column indicating these records came from WorldCat.
+
+2. `no_isbn_matches.csv`: a CSV containing the original records of books that the workflow did not produce any results for, likely because WorldCat returned no results for the title, no results passed the matching algorithm, or no results had ISBNs. Future work might focus on determining why these failed and deciding whether the algorithm needs to be tuned or expanded upon to collect more data.
 
 #### Using and re-setting the cache
 
