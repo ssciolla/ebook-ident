@@ -23,7 +23,7 @@ The application currently gathers, analyzes, and transforms data using the follo
 
 ### Installation
 
-#### Pre-requisities
+#### Prerequisities
 
 Currently, the recommended way to set up the project and install needed dependencies is by using `virtualenv`. Before following the instructions below, you may need to install some or all of the following:
 
@@ -77,7 +77,7 @@ The application running successfully depends on two input files being provided: 
 
 2. Copy the template file, renaming it `env.json`.
     ```
-    mv config/env_blank.json config/env.json
+    cp config/env_blank.json config/env.json
     ```
 
 3. Replace the default or empty values in the nested structure with a value of the same data type. The table below provides detail on the meaning of each key-value pair and its accepted values.
@@ -85,7 +85,7 @@ The application running successfully depends on two input files being provided: 
     **Key** | **Description**
     ----- | -----
     `LOG_LEVEL` | The minimum level for log messages that will appear in output. `INFO` or `DEBUG` is recommended for most use cases; see [Python's logging module](https://docs.python.org/3/library/logging.html).
-    `WC_SEARCH_API_KEY` in the `WORLDCAT` object | The WS Key for authenticating to the WorldCat Search API; see [WorldCat Search API](https://www.oclc.org/developer/develop/web-services/worldcat-search-api.en.html)
+    `WC_SEARCH_API_KEY` in the `WORLDCAT` object | The WS Key for authenticating to the WorldCat Search API; see [WorldCat Search API](https://www.oclc.org/developer/develop/web-services/worldcat-search-api.en.html).
     `BIB_RESOURCE_BASE_URL` in the `WORLDCAT` object | The base URL specifying the Bibliographic Resource endpoint of the REST API; as of March 2020, the default should be correct.
     `DB_CACHE_PATH` | An array of strings specifying each step in a path to where the database cache will be written; the default is recommended.
     `BOOKS_CSV_PATH` | An array of strings specifying each step in a path to where the input CSV or Excel file was placed in Step #1; the first string should be `"data"`, and the second should be the name of the input file.
@@ -104,7 +104,7 @@ python identify.py
 
 **Note**: if you are making changes to the code or otherwise tuning it, make use of the `LOG_LEVEL` and `TEST_MODE` options described above to see increased output or limit the number of records processed.
 
-#### Expected outputs
+#### Outputs
 
 Currently, the project has two primary outputs. These are likely to change if work proceeds on this project in the future.
 
