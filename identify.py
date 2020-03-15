@@ -157,19 +157,6 @@ def look_up_book_in_worldcat(book_dict: Dict[str, str]) -> pd.DataFrame:
     return records_df
 
 
-# Determines format for a row on multiple analyzed columns
-def determine_format(row: pd.Series):
-    results = row[['Q Format', 'Overflow Format']].drop_duplicates().dropna()
-    results = [result for result in results if result != "#NA#"]
-    if len(results) > 1:
-        logger.warning('Different formats were found ')
-        logger.warning(results)
-    elif len(results) < 1:
-        return pd.NA
-    else:
-        return results[0]
-
-
 def run_checks_and_return_matches(orig_record: Dict[str, str], results_df: pd.DataFrame) -> pd.DataFrame:
     checked_df = results_df.copy()
     logger.debug(orig_record)
@@ -206,6 +193,19 @@ def run_checks_and_return_matches(orig_record: Dict[str, str], results_df: pd.Da
     logger.info(f'Matched {len(manifest_df)} records!')
     logger.info(manifest_df.head(20))
     return manifest_df
+
+
+# Determines format for a row on multiple analyzed columns
+def determine_format(row: pd.Series):
+    results = row[['Q Format', 'Overflow Format']].drop_duplicates().dropna()
+    results = [result for result in results if result != "#NA#"]
+    if len(results) > 1:
+        logger.warning('Different formats were found ')
+        logger.warning(results)
+    elif len(results) < 1:
+        return pd.NA
+    else:
+        return results[0]
 
 
 def classify_and_find_unique_manifests(orig_record: Dict[str, str], matches_df: pd.DataFrame):
