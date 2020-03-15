@@ -11,9 +11,9 @@ The application currently gathers, analyzes, and transforms data using the follo
 1. Prepare input book records for use.
 2. For each book,
     1. Search for title and author in WorldCat, using the Bibliographic Resource API endpoint.
-    2. Parse returned MARCXML WorldCat records into a flat tabular data structure.
+    2. Parse returned MARCXML WorldCat records into a flat tabular data structure, looking for certain fields and subfields as specified in the `marcxml_lookup.json` file in the `config` directory.
     3. Check whether the title and publisher of each WorldCat record matches the original book record. Strings are normalized and then analyzed for differences using the Levenshtein Distance algorithm.
-    4. For matching records, determine their format and eliminate duplicate pairs of ISBNs and format types.
+    4. For matching records, determine their format by looking at the "ISBN a" and "ISBN q" fields, and eliminate duplicate pairs of ISBNs and format types.
     5. Accumulate the resulting new records.
 3. Output new ISBN/Format records for all books as a CSV.
 4. Output original book records that did not match with records with ISBNs into another CSV.
