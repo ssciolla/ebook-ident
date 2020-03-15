@@ -46,10 +46,10 @@ TEST_MODE_OPTS = ENV['TEST_MODE']
 
 with open(os.path.join('config', 'marcxml_lookup.json')) as lookup_file:
     MARCXML_LOOKUP = json.loads(lookup_file.read())
-with open(os.path.join('config', 'fm_to_identify.json')) as fm_to_identify_cw:
-    FM_TO_IDENTIFY_CW = json.loads(fm_to_identify_cw.read())
-with open(os.path.join('config', 'identify_to_fm.json')) as identify_to_fm_cw:
-    IDENTIFY_TO_FM_CW = json.loads(identify_to_fm_cw.read())
+with open(os.path.join('config', 'input_to_identify.json')) as input_to_identify_cw:
+    INPUT_TO_IDENTIFY_CW = json.loads(input_to_identify_cw.read())
+with open(os.path.join('config', 'identify_to_output.json')) as identify_to_output_cw:
+    IDENTIFY_TO_OUTPUT_CW = json.loads(identify_to_output_cw.read())
 
 
 # Functions - Utilities
@@ -279,7 +279,7 @@ def identify_books() -> None:
         press_books_df = pd.read_csv(input_path, dtype=str)
 
     # Crosswalk to consistent column names
-    press_books_df = press_books_df.rename(columns=FM_TO_IDENTIFY_CW)
+    press_books_df = press_books_df.rename(columns=INPUT_TO_IDENTIFY_CW)
     logger.debug(press_books_df.columns)
 
     # Limit number of records for testing purposes
